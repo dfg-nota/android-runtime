@@ -347,7 +347,6 @@ public class Dump
        	generateProxy(aw, "0", classTo, null, null);
    	}
 
-	// TODO: Pete: write implements interfaces
     public void generateProxy(ApplicationWriter aw, String proxyName, Class<?> classTo, HashSet<String> methodOverrides, HashSet<String> implementedInterfaces)
 	{
 		String classSignature = getAsmDescriptor(classTo);
@@ -361,13 +360,31 @@ public class Dump
 
 		tnsClassSignature += ";";
 
-		// TODO: Pete: Print in debug that (Log) that interfaces are being implemented
+		HashSet<Class> interfacesToImplement = new HashSet<>();
 
-		// TODO: Pete: pass on the implemented interfaces here vvvv
-		// TODO: Pete: Make implementedInterfaces a collection of Class<> objects
-		ClassVisitor cv = generateClass(aw, classTo, classSignature, tnsClassSignature, implementedInterfaces);
+		if(implementedInterfaces != null && implementedInterfaces.size() > 0) {
+			if (ProxyGenerator.IsLogEnabled) {
+				Log.d("Generator", "generateProxy: implementing interfaces for class " + classTo.getName() + ":");
+			}
 
-		Method[] methods = getSupportedMethods(classTo, methodOverrides, implementedInterfaces);
+			for(String interfaceToImpl : implementedInterfaces) {
+				try {
+					Class interfaceClass = Class.forName(interfaceToImpl);
+
+					interfacesToImplement.add(interfaceClass);
+
+					if (ProxyGenerator.IsLogEnabled) {
+						Log.d("Generator", "-- implementing interface " + interfaceToImpl);
+					}
+				} catch (ClassNotFoundException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+
+		ClassVisitor cv = generateClass(aw, classTo, classSignature, tnsClassSignature, interfacesToImplement);
+
+		Method[] methods = getSupportedMethods(classTo, methodOverrides, interfacesToImplement);
 
 		methods = groupMethodsByName(methods);
 		
@@ -410,7 +427,7 @@ public class Dump
 		return m.getName() + sig.substring(nameIdx, endSigIdx);
 	}
 
-	private Method[] getSupportedMethods(Class<?> clazz, HashSet<String> methodOverrides, HashSet<String> interfacesToImplement)
+	private Method[] getSupportedMethods(Class<?> clazz, HashSet<String> methodOverrides, HashSet<Class> interfacesToImplement)
 	{
 		ArrayList<Method> result = new ArrayList<Method>();
 
@@ -452,14 +469,10 @@ public class Dump
 		{
 			HashMap<String, Method> finalMethods = new HashMap<String, Method>();
 			ArrayList<Class<?>> implementedInterfaces = new ArrayList<Class<?>>();
+
 			if(interfacesToImplement != null) {
-				for(String intface : interfacesToImplement) {
-					try {
-						Class interfaceToImpl = Class.forName(intface);
-						implementedInterfaces.add(interfaceToImpl);
-					} catch (ClassNotFoundException e) {
-						e.printStackTrace();
-					}
+				for(Class interfaceToImpl : interfacesToImplement) {
+					implementedInterfaces.add(interfaceToImpl);
 				}
 			}
 
@@ -1197,7 +1210,7 @@ public class Dump
 	static final String[] classImplentedInterfaces = new String[] { "Lcom/tns/NativeScriptHashCodeProvider;" };
 	static final String[] interfaceImplementedInterfaces = new String[] { "Lcom/tns/NativeScriptHashCodeProvider;", "" };
 
-	private ClassVisitor generateClass(ApplicationWriter aw, Class<?> classTo, String classSignature, String tnsClassSignature, HashSet<String> implementedInterfaces)
+	private ClassVisitor generateClass(ApplicationWriter aw, Class<?> classTo, String classSignature, String tnsClassSignature, HashSet<Class> implementedInterfaces)
 	{
 		ClassVisitor cv;
 		
@@ -1218,14 +1231,8 @@ public class Dump
 		else
 		{
 			if(implementedInterfaces != null) {
-				for(String interfaceToImpl : implementedInterfaces) {
-					try {
-						Class interfaceClass = Class.forName(interfaceToImpl);
-
-						interfacesToImplement.add(getAsmDescriptor(interfaceClass));
-					} catch (ClassNotFoundException e) {
-						e.printStackTrace();
-					}
+				for(Class interfaceToImpl : implementedInterfaces) {
+					interfacesToImplement.add(getAsmDescriptor(interfaceToImpl));
 				}
 			}
 		}
