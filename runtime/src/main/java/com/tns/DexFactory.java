@@ -62,7 +62,8 @@ public class DexFactory
 	static long totalMultiDexTime = 0;
 	static long totalLoadDexTime = 0;
 
-	public Class<?> resolveClass(String name, String className, String[] methodOverrides, boolean isInterface) throws ClassNotFoundException, IOException
+	// TODO: Pete: new param - implementedInterfaces
+	public Class<?> resolveClass(String name, String className, String[] methodOverrides, String[] implementedInterfaces, boolean isInterface) throws ClassNotFoundException, IOException
 	{
 		String fullClassName = className.replace("$", "_");
 
@@ -114,7 +115,7 @@ public class DexFactory
 				logger.write("generating proxy in place");
 			}
 
-			dexFilePath = this.generateDex(name, classToProxy, methodOverrides, isInterface);
+			dexFilePath = this.generateDex(name, classToProxy, methodOverrides, implementedInterfaces, isInterface);
 			dexFile = new File(dexFilePath);
 			long stopGenTime = System.nanoTime();
 			totalGenTime += stopGenTime - startGenTime;
@@ -252,22 +253,35 @@ public class DexFactory
 		return null;
 	}
 
-	private String generateDex(String proxyName, String className, String[] methodOverrides, boolean isInterface) throws ClassNotFoundException, IOException
+	private String generateDex(String proxyName, String className, String[] methodOverrides, String[] implementedInterfaces, boolean isInterface) throws ClassNotFoundException, IOException
 	{
 		Class<?> classToProxy = Class.forName(className);
 
 		HashSet<String> methodOverridesSet = null;
+		HashSet<String> implementedInterfacesSet = null;
+
 		if (methodOverrides != null)
 		{
 			methodOverridesSet = new HashSet<String>();
 			for (int i = 0; i < methodOverrides.length; i++)
 			{
 				String methodOverride = methodOverrides[i];
+
+					if (implementedInterfaces.length > 0) {
+						implementedInterfacesSet = new HashSet<String>();
+						for(int j = 0; j < implementedInterfaces.length; j++) {
+							if(!implementedInterfaces[j].isEmpty()) {
+								implementedInterfacesSet.add(implementedInterfaces[j]);
+							}
+						}
+					}
+
 				methodOverridesSet.add(methodOverride);
 			}
 		}
 
-		return proxyGenerator.generateProxy(proxyName, classToProxy, methodOverridesSet, isInterface);
+		// pass along the implemented interfaces, if any
+		return proxyGenerator.generateProxy(proxyName, classToProxy, methodOverridesSet, implementedInterfacesSet, isInterface);
 	}
 
 	private void updateDexThumbAndPurgeCache()

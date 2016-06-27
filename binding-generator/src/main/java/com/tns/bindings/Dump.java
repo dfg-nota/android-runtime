@@ -1,5 +1,6 @@
 package com.tns.bindings;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -322,7 +323,7 @@ public class Dump
 			String methodOverride = methodOverrides[i];
 			methodOverridesSet.add(methodOverride);
 		}
-    	generateProxy(aw, proxyName, classTo, methodOverridesSet);
+    	generateProxy(aw, proxyName, classTo, methodOverridesSet, null);
     }
     
     public void generateProxy(ApplicationWriter aw, Class<?> classTo, String[] methodOverrides, int ignored)
@@ -333,23 +334,23 @@ public class Dump
 			String methodOverride = methodOverrides[i];
 			methodOverridesSet.add(methodOverride);
 		}
-    	generateProxy(aw, "0", classTo, methodOverridesSet);
+    	generateProxy(aw, "0", classTo, methodOverridesSet, null);
     }
     
     public void generateProxy(ApplicationWriter aw, String proxyName, Class<?> classTo)
 	{
-    	generateProxy(aw, proxyName, classTo, null);
+    	generateProxy(aw, proxyName, classTo, null, null);
 	}
     
     public void generateProxy(ApplicationWriter aw, Class<?> classTo)
    	{
-       	generateProxy(aw, "0", classTo, null);
+       	generateProxy(aw, "0", classTo, null, null);
    	}
-    
-    public void generateProxy(ApplicationWriter aw, String proxyName, Class<?> classTo, HashSet<String> methodOverrides)
+
+	// TODO: Pete: write implements interfaces
+    public void generateProxy(ApplicationWriter aw, String proxyName, Class<?> classTo, HashSet<String> methodOverrides, HashSet<String> implementedInterfaces)
 	{
 		String classSignature = getAsmDescriptor(classTo);
-		//String methodSignature = org.objectweb.asm.Type.getMethodDescriptor(Object.class.getMethods()[0]);
 
 		String tnsClassSignature = LCOM_TNS + 
 				classSignature.substring(1, classSignature.length() - 1).replace("$", "_");
@@ -359,10 +360,15 @@ public class Dump
 		}
 
 		tnsClassSignature += ";";
-		
-		ClassVisitor cv = generateClass(aw, classTo, classSignature, tnsClassSignature);
-		Method[] methods = getSupportedMethods(classTo, methodOverrides);
-		
+
+		// TODO: Pete: Print in debug that (Log) that interfaces are being implemented
+
+		// TODO: Pete: pass on the implemented interfaces here vvvv
+		// TODO: Pete: Make implementedInterfaces a collection of Class<> objects
+		ClassVisitor cv = generateClass(aw, classTo, classSignature, tnsClassSignature, implementedInterfaces);
+
+		Method[] methods = getSupportedMethods(classTo, methodOverrides, implementedInterfaces);
+
 		methods = groupMethodsByName(methods);
 		
 		generateFields(cv);
@@ -404,7 +410,7 @@ public class Dump
 		return m.getName() + sig.substring(nameIdx, endSigIdx);
 	}
 
-	private Method[] getSupportedMethods(Class<?> clazz, HashSet<String> methodOverrides)
+	private Method[] getSupportedMethods(Class<?> clazz, HashSet<String> methodOverrides, HashSet<String> interfacesToImplement)
 	{
 		ArrayList<Method> result = new ArrayList<Method>();
 
@@ -419,6 +425,7 @@ public class Dump
 					objectMethods.add(sig);
 				}
 			}
+
 			Set<Method> notImplementedObjectMethods = new HashSet<Method>();
 			Method[] ifaceMethods = clazz.getDeclaredMethods();
 			for (Method ifaceMethod: ifaceMethods)
@@ -432,6 +439,7 @@ public class Dump
 					}
 				}
 			}
+
 			for (Method ifaceMethod: ifaceMethods)
 			{
 				if (!notImplementedObjectMethods.contains(ifaceMethod))
@@ -444,6 +452,17 @@ public class Dump
 		{
 			HashMap<String, Method> finalMethods = new HashMap<String, Method>();
 			ArrayList<Class<?>> implementedInterfaces = new ArrayList<Class<?>>();
+			if(interfacesToImplement != null) {
+				for(String intface : interfacesToImplement) {
+					try {
+						Class interfaceToImpl = Class.forName(intface);
+						implementedInterfaces.add(interfaceToImpl);
+					} catch (ClassNotFoundException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+
 			while (clazz != null)
 			{
 				Method[] methods = clazz.getDeclaredMethods();
@@ -487,7 +506,7 @@ public class Dump
 				for (int j = 0; j < interfaceMethods.length; j++)
 				{
 					Method method = interfaceMethods[j];
-					
+
 					if (methodOverrides != null && !methodOverrides.contains(method.getName()))
 					{
 						continue;
@@ -729,12 +748,13 @@ public class Dump
 
 	private void generateMethod(ClassVisitor cv, Class<?> classTo, Method method, int methodNumber, String classSignature, String tnsClassSignature, int fieldBit)
 	{
-		if (ProxyGenerator.IsLogEnabled) Log.d("Generator", "generatingMethod " + method.getName());
+		if (ProxyGenerator.IsLogEnabled) {
+			Log.d("Generator", "generatingMethod " + method.getName());
+		}
 		
 		//TODO: handle checked exceptions
 		String methodDexSignature = getDexMethodDescriptor(method);
 		String[] exceptions = new String[0];
-		
 	
 		MethodVisitor mv;
 		int methodModifiers = getDexModifiers(method.getModifiers());
@@ -748,6 +768,7 @@ public class Dump
 		{
 			generateInitializedBlock(mv, thisRegister, classSignature, tnsClassSignature);
 		}
+
 		generateCallOverrideBlock(mv, method, thisRegister, classSignature, tnsClassSignature, methodDexSignature, fieldBit);
 
 		mv.visitEnd();
@@ -1175,25 +1196,45 @@ public class Dump
 
 	static final String[] classImplentedInterfaces = new String[] { "Lcom/tns/NativeScriptHashCodeProvider;" };
 	static final String[] interfaceImplementedInterfaces = new String[] { "Lcom/tns/NativeScriptHashCodeProvider;", "" };
-	private ClassVisitor generateClass(ApplicationWriter aw, Class<?> classTo, String classSignature, String tnsClassSignature)
+
+	private ClassVisitor generateClass(ApplicationWriter aw, Class<?> classTo, String classSignature, String tnsClassSignature, HashSet<String> implementedInterfaces)
 	{
 		ClassVisitor cv;
 		
 		int classModifiers = getDexModifiers(classTo.getModifiers());
-		String[] implentedInterfaces = classImplentedInterfaces;
+		ArrayList<String> interfacesToImplement = new ArrayList(Arrays.asList(classImplentedInterfaces));
+
 		if (classTo.isInterface())
 		{
 			interfaceImplementedInterfaces[1] = classSignature; //new String[] { "Lcom/tns/NativeScriptHashCodeProvider;", classSignature };
-			implentedInterfaces = interfaceImplementedInterfaces;
+			for(String interfaceToImpl : interfaceImplementedInterfaces) {
+				if(!interfacesToImplement.contains(interfaceToImpl)) {
+					interfacesToImplement.add(interfaceToImpl);
+				}
+			}
+
 			classSignature = objectClass;
 		}
 		else
 		{
-			implentedInterfaces = classImplentedInterfaces;
+			if(implementedInterfaces != null) {
+				for(String interfaceToImpl : implementedInterfaces) {
+					try {
+						Class interfaceClass = Class.forName(interfaceToImpl);
+
+						interfacesToImplement.add(getAsmDescriptor(interfaceClass));
+					} catch (ClassNotFoundException e) {
+						e.printStackTrace();
+					}
+				}
+			}
 		}
-		
-		cv = aw.visitClass(classModifiers, tnsClassSignature, null, classSignature, implentedInterfaces);
-		cv.visit(0, classModifiers, tnsClassSignature, null, classSignature, implentedInterfaces);
+
+		String[] interfacesToImplementArr = new String[interfacesToImplement.size()];
+		interfacesToImplementArr = interfacesToImplement.toArray(interfacesToImplementArr);
+
+		cv = aw.visitClass(classModifiers, tnsClassSignature, null, classSignature, interfacesToImplementArr);
+		cv.visit(0, classModifiers, tnsClassSignature, null, classSignature, interfacesToImplementArr);
 		cv.visitSource(classTo.getName() +  ".java", null);
 		return cv;
 	}

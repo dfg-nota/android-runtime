@@ -42,15 +42,16 @@ public class ProxyGenerator
 				methodOverridesSet.add(methodOverride);
 			}
 		}
-		return generateProxy(proxyName, classToProxy, methodOverridesSet, isInterface);
+
+		return generateProxy(proxyName, classToProxy, methodOverridesSet, null, isInterface);
 	}
 	
-	public String generateProxy(String proxyName, Class<?> classToProxy, HashSet<String> methodOverrides, boolean isInterface) throws IOException
+	public String generateProxy(String proxyName, Class<?> classToProxy, HashSet<String> methodOverrides, HashSet<String> implementedInterfaces, boolean isInterface) throws IOException
 	{
 		ApplicationWriter aw = new ApplicationWriter();
 		aw.visit();
 
-		dump.generateProxy(aw, proxyName, classToProxy, methodOverrides);
+		dump.generateProxy(aw, proxyName, classToProxy, methodOverrides, implementedInterfaces);
 
 		aw.visitEnd();
 		byte[] generatedBytes = aw.toByteArray();
